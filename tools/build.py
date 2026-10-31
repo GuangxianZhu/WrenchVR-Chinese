@@ -11,6 +11,7 @@ from pakfile import write_pak, PakReader
 from locres import write_locres, read_locres_legacy
 from extract import extract
 from appnames import build_app_names
+from exepatch import install_exe, uninstall_exe
 
 ROOT = os.path.dirname(HERE)
 PAK_REL = os.path.join('WindowsNoEditor', 'WrenchGame', 'Content', 'Paks')
@@ -94,6 +95,7 @@ def main():
     ap.add_argument('--game')
     ap.add_argument('--install', action='store_true')
     ap.add_argument('--uninstall', action='store_true')
+    ap.add_argument('--no-exe', action='store_true', help='不改 exe（只装 pak 补丁）')
     a = ap.parse_args()
     game = find_game(a.game)
     target = os.path.join(game, PAK_REL, PATCH_NAME)
@@ -102,12 +104,20 @@ def main():
             os.remove(target); print('已卸载汉化补丁。')
         else:
             print('未安装汉化补丁，无需卸载。')
+        uninstall_exe(game)
         return
     out = build(game)
     if a.install:
         shutil.copyfile(out, target)
         print('已安装到:', target)
+        exe_table = os.path.join(ROOT, 'data', 'zh_exe.json')
+        if not a.no_exe and os.path.exists(exe_table):
+            install_exe(game, json.load(open(exe_table, encoding='utf-8')))
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except RuntimeError as ex:
+        print('错误:', ex)
+        sys.exit(1)
