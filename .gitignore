@@ -1,0 +1,6 @@
+work/
+dist/
+__pycache__/
+data/source_entries*.json
+data/untranslated.json
+game_path.txt
