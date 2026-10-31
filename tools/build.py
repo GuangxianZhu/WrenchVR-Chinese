@@ -101,14 +101,21 @@ def main():
     target = os.path.join(game, PAK_REL, PATCH_NAME)
     if a.uninstall:
         if os.path.exists(target):
-            os.remove(target); print('已卸载汉化补丁。')
+            try:
+                os.remove(target)
+            except PermissionError:
+                raise RuntimeError('补丁文件被占用：请先完全退出 Wrench 再运行。')
+            print('已卸载汉化补丁。')
         else:
             print('未安装汉化补丁，无需卸载。')
         uninstall_exe(game)
         return
     out = build(game)
     if a.install:
-        shutil.copyfile(out, target)
+        try:
+            shutil.copyfile(out, target)
+        except PermissionError:
+            raise RuntimeError('补丁文件被占用：请先完全退出 Wrench 再运行。')
         print('已安装到:', target)
         exe_table = os.path.join(ROOT, 'data', 'zh_exe.json')
         if not a.no_exe and os.path.exists(exe_table):

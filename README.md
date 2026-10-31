@@ -31,10 +31,11 @@ git clone https://github.com/GuangxianZhu/WrenchVR-Chinese.git
 | 文本来源 | 数量 | 状态 |
 |---|---|---|
 | 资源里的 FText（界面、零件名、目录、教程、故障症状…） | 2,462 条 | ✅ |
+| 数据表里用可读名字当 key 的文本（物体识别板的零件名/说明等） | 1,056 条 | ✅ |
 | 蓝图字节码里的文本常量（弹窗、提示、比赛信息、日期…） | 607 条 | ✅ |
 | 平板应用名（FName，locres 管不到） | 16 个 | ✅ 改名表方式 |
 | 写死在 exe 里的 C++ 文本（开场教程、任务评价、生涯说明、设置页…） | 约 1,700 条 | ✅ exe 原位替换 |
-| exe 里同时被当作「标识符」用的词（如按键动作名 Sprint、Tablet，应用 ID Settings） | 少量 | ❌ 故意不改，见原理 6 |
+| exe 里同时被当作「标识符」用的词（如按键动作名 Interact、Sprint、Tablet，设置页 Video/Desktop/Misc） | 少量 | ❌ 故意不改，见原理 6 |
 | 文化无关文本（如 "Multiplayer Log"）、3D 贴图上的字 | 少量 | ❌ |
 
 ## 原理（为什么这样做）
@@ -72,7 +73,7 @@ data/zh_CN.json        资源文本：英文原文 → 中文（可手改）
 data/zh_exe.json       exe 内置文本：英文 → 中文（译文不能比英文长）
 data/glossary.md       术语表
 tools/build.py         入口：提取 → 生成 locres → 打 pak → 安装/卸载
-tools/extract.py       从游戏 pak 提取 FText（属性 + 蓝图字节码）
+tools/extract.py       从游戏 pak 提取 FText（GUID key / 可读 key / 蓝图字节码三种格式）
 tools/locres.py        写 UE4 .locres（legacy 格式）
 tools/pakfile.py       纯 Python 读写 UE4 pak v11（无压缩、无加密）
 tools/uasset.py        解析/改写 uasset 包头与名字表

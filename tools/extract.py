@@ -6,6 +6,9 @@ from pakfile import PakReader
 KEY = re.compile(rb'\x21\x00\x00\x00([0-9A-F]{32})\x00')
 # Blueprint bytecode: EX_TextConst(0x29) + LocalizedText(0x01) + 3 string consts (source, key, namespace)
 KISMET = re.compile(rb'\x29\x01(?=[\x1f\x34])')
+# FText with a human-readable key (e.g. DataTable rows: ns "IntroGameObjectDescriptions",
+# key "Part_CAS_Description"): int8 history=0 | FString ns | FString key | FString source
+NAMED = re.compile(rb'\x00([\x02-\x80])\x00\x00\x00([A-Za-z_][A-Za-z0-9_]*)\x00([\x02-\x80])\x00\x00\x00([A-Za-z0-9_][A-Za-z0-9_ .\-/]*)\x00')
 
 
 def _kstr(b, p):
@@ -70,6 +73,20 @@ def extract(pak_path):
                 conflicts += 1
                 continue
             found.setdefault(k, {'ns': ns, 'key': k[1], 'src': src, 'asset': path})
+        for m in NAMED.finditer(b):
+            ns, key = m.group(2).decode(), m.group(4).decode()
+            if len(ns) + 1 != m.group(1)[0] or len(key) + 1 != m.group(3)[0]:
+                continue
+            if re.fullmatch(r'[0-9A-F]{32}', ns) or re.fullmatch(r'[0-9A-F]{32}', key):
+                continue  # GUID-keyed texts are handled by KEY above
+            src = _fstr(b, m.end())
+            if not src or not re.search(r'[A-Za-z]{2,}', src):
+                continue
+            k = (ns, key)
+            if k in found and found[k]['src'] != src:
+                conflicts += 1
+                continue
+            found.setdefault(k, {'ns': ns, 'key': key, 'src': src, 'asset': path})
         for m in KISMET.finditer(b):
             src, q = _kstr(b, m.end())
             key, q = _kstr(b, q) if src is not None else (None, q)
