@@ -2,7 +2,7 @@
 
 给 Steam 游戏 **Wrench**（Missing Digit，UE4 赛车维修模拟）做的非官方简体中文补丁。
 由两部分组成：
-1. 往游戏的 `Paks` 文件夹加一个约 10 MB 的补丁包 `zzz_WrenchZhCN_P.pak`：中文翻译表 + 少量改过名字表的资源（应用名、零件名）；
+1. 往游戏的 `Paks` 文件夹加一个约 18 MB 的补丁包 `zzz_WrenchZhCN_P.pak`：中文翻译表 + 少量改过名字表的资源（应用名、零件名、3D 文字字体）；
 2. 把游戏 exe 里少数写死、又不走翻译表的英文**原位替换**成中文（约 40 条）。改之前自动备份原版 exe，卸载时还原。
 
 实测情况：
@@ -33,7 +33,8 @@
 | 准星指向零件时显示的零件名（FName） | 415 个 | ✅ 改名字表（原理 4） |
 | 平板应用名（FName） | 16 个 | ✅ 改名字表（原理 4） |
 | exe 里不走 LOCTEXT 的写死字符串 | 约 40 条 | ✅ exe 原位替换（原理 6） |
-| 3D 场景里的立体字（TextRenderComponent，如 Exit、Start Career 牌子） | 73 处 | ❌ 故意保持英文：它用的离线字体没有中文字形，硬翻会变成方块（原理 7） |
+| VR 手边的零件名标签等 3D 文字所用字体（引擎的 RobotoDistanceField 只有英文字形） | 补 1,375 个中文字形 | ✅ 重建字体贴图（原理 7） |
+| 3D 场景里固定的立体字（如 Exit、Start Career 牌子） | 73 处 | 暂时保持英文（原理 7） |
 | 品牌/车型/人名（Bauer Catfish、Castrol、Missing Digit…）、包装贴图上的字 | 少量 | ❌ 保持原样 |
 | 开发者留的占位文本（`[todo: …]`、`[ETI_…]`） | 少量 | 译成「[待补充：…]」，英文版里本来也是占位 |
 
@@ -55,7 +56,11 @@
    只替换 `.rdata` 段里**完整**的字符串，不碰部分匹配；凡是在游戏资源名字表（FName）和配置文件里出现过的字符串，都当作「可能是标识符」排除掉（比如按键动作名 `Sprint`，改了会让按键失灵），宁可少翻也不冒险。
    安装时先备份原版 exe（`*.zh_backup`），并记录原版/汉化版的哈希：重复安装总是从干净的原版重新打补丁；检测到 exe 变了（游戏更新、切换版本或 Steam 校验）就把新 exe 当作新原版。
 7. **中文字形**：界面用的 Roboto 字体带 DroidSansFallback 作后备，中文能正常显示，不用额外打字体。
-   但 3D 场景里的立体字（TextRenderComponent）用的是预先烘焙的距离场字体，只有英文字形。它和界面有时共用同一条文本 key，所以构建时把这些立体字所在资源里的 key 改掉一位（长度不变、别的字节不动），让立体字继续查到英文、界面照样显示中文。
+   但 3D 文字（TextRenderComponent，比如 VR 里手边显示的零件名）只能用预先烘焙的「离线字体」：一张距离场贴图 + 每个字的矩形表。
+   引擎默认的 `RobotoDistanceField` 只有 256 个拉丁字形（512×256），中文就成了方框。
+   `tools/dffont.py` 重建这个字体：新贴图 4096×2048，原来的拉丁字形放大 2 倍搬过去（距离场放大不糊），再加上用引擎自带 DroidSansFallback 渲染的中文距离场字形（`data/cjk_glyphs.bin`，由 `tools/make_cjk_glyphs.py` 生成）；
+   字表改成 `IsRemapped` + `CharRemap`（UTF-16 码位 → 字形序号）。所有字形同样 52 像素高，所以字在场景里的大小不变。
+   场景里固定的立体字牌子和界面有时共用同一条文本 key，目前仍把它们的 key 改掉一位让它们查到英文（长度不变、别的字节不动）。
 8. **帮助页里的 `{WGKEYIMG(...)}`**：这是开发者预留、但游戏里没有实现的按键图标占位符，英文版也是原样显示。中文译文直接写成可读的按键提示（如「使用【空格键】和【C】升高或降低站立高度」）。
 
 ## 依赖的假设 / 什么情况下会失效
@@ -88,7 +93,10 @@ tools/pakfile.py       纯 Python 读写 UE4 pak v11（无压缩、无加密）
 tools/uasset.py        解析/改写 uasset 包头、名字表、导出表
 tools/appnames.py      平板应用名汉化
 tools/partnames.py     零件名汉化
-tools/textrender.py    让 3D 立体字保持英文（字体没有中文字形）
+tools/textrender.py    让场景里固定的 3D 立体字保持英文
+tools/dffont.py        给 3D 文字字体补中文字形
+tools/make_cjk_glyphs.py 维护用：渲染中文距离场字形（需 Pillow、numpy、scipy）
+data/cjk_glyphs.bin    中文距离场字形（源自 DroidSansFallback，Apache 2.0）
 tools/idents.py        收集「可能是标识符」的字符串，exe 原位替换时避开
 tools/exepatch.py      exe 原位替换（备份/还原/哈希状态）
 tools/extract_exe.py   维护用：列出 exe 里还没翻译的文本

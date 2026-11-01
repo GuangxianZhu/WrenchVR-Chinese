@@ -12,6 +12,7 @@ from locres import write_locres, read_locres_legacy
 from extract import extract
 from appnames import build_app_names
 from partnames import build_part_names
+from dffont import build_cjk_font
 from textrender import textrender_overrides
 from exepatch import install_exe, uninstall_exe, clean_exe_bytes, EXE_REL
 from exeloctext import extract_loctext
@@ -123,6 +124,20 @@ def build(game):
             print('  以下零件名还没有译文:', ', '.join(miss))
     except Exception as ex:
         print('跳过零件名称汉化（游戏资源结构已变化）:', ex)
+    try:
+        # VR part labels etc. are 3D text, whose baked font only has Latin glyphs
+        fo, n_g, cps = build_cjk_font(PakReader(base))
+        files.update(fo)
+        print('3D 文字字体已补中文字形 %d 个' % n_g)
+        used = set()
+        for tbl in (zh, zx, zk):
+            for v in tbl.values():
+                used.update(c for c in v if ord(c) > 255)
+        lack = sorted(c for c in used if ord(c) not in cps)
+        if lack:
+            print('  这些字在 3D 文字里会显示成方框（运行 tools/make_cjk_glyphs.py 补）:', ''.join(lack))
+    except Exception as ex:
+        print('跳过 3D 文字字体（游戏资源结构已变化）:', ex)
     os.makedirs(os.path.join(ROOT, 'dist'), exist_ok=True)
     out = os.path.join(ROOT, 'dist', PATCH_NAME)
     write_pak(out, files)
