@@ -2,6 +2,7 @@
 import re, struct, json, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pakfile import PakReader
+from uasset import Summary, export_spans
 
 KEY = re.compile(rb'\x21\x00\x00\x00([0-9A-F]{32})\x00')
 # Blueprint bytecode: EX_TextConst(0x29) + LocalizedText(0x01) + 3 string consts (source, key, namespace)
@@ -51,6 +52,18 @@ def _namespace(b, k):
     return None
 
 
+def _render_spans(pak, uexp_path):
+    """uexp byte ranges of TextRenderComponent exports. Those draw 3D text with an offline
+    (ASCII-only) distance-field font, so Chinese would show as boxes: keep them in English."""
+    base = uexp_path[:-5]
+    head = base + '.umap' if base + '.umap' in pak.files else base + '.uasset'
+    try:
+        a = pak.read(head)
+        return [(st, en) for st, en, c in export_spans(a, Summary(a)) if 'TextRender' in c]
+    except Exception:
+        return []
+
+
 def extract(pak_path):
     pak = PakReader(pak_path)
     found = {}; conflicts = 0
@@ -61,6 +74,19 @@ def extract(pak_path):
             b = pak.read(path)
         except NotImplementedError:
             continue
+        spans = None
+
+        def in_render(pos):
+            nonlocal spans
+            if spans is None:
+                spans = _render_spans(pak, path)
+            return any(st <= pos < en for st, en in spans)
+
+        def add(k, src, pos):
+            e = found.setdefault(k, {'ns': k[0], 'key': k[1], 'src': src, 'asset': path})
+            if in_render(pos):
+                e['textrender'] = True
+
         for m in KEY.finditer(b):
             ns = _namespace(b, m.start())
             if ns is None:
@@ -72,7 +98,7 @@ def extract(pak_path):
             if k in found and found[k]['src'] != src:
                 conflicts += 1
                 continue
-            found.setdefault(k, {'ns': ns, 'key': k[1], 'src': src, 'asset': path})
+            add(k, src, m.start())
         for m in NAMED.finditer(b):
             ns, key = m.group(2).decode(), m.group(4).decode()
             if len(ns) + 1 != m.group(1)[0] or len(key) + 1 != m.group(3)[0]:
@@ -86,7 +112,7 @@ def extract(pak_path):
             if k in found and found[k]['src'] != src:
                 conflicts += 1
                 continue
-            found.setdefault(k, {'ns': ns, 'key': key, 'src': src, 'asset': path})
+            add(k, src, m.start())
         for m in KISMET.finditer(b):
             src, q = _kstr(b, m.end())
             key, q = _kstr(b, q) if src is not None else (None, q)
@@ -97,7 +123,7 @@ def extract(pak_path):
             if k in found and found[k]['src'] != src:
                 conflicts += 1
                 continue
-            found.setdefault(k, {'ns': ns, 'key': key, 'src': src, 'asset': path})
+            add(k, src, m.start())
     return list(found.values()), conflicts
 
 
@@ -105,4 +131,5 @@ if __name__ == '__main__':
     pak_path, out = sys.argv[1], sys.argv[2]
     ents, conflicts = extract(pak_path)
     json.dump(ents, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
-    print('entries', len(ents), 'key conflicts', conflicts, 'unique sources', len({e['src'] for e in ents}))
+    print('entries', len(ents), 'key conflicts', conflicts, 'unique sources', len({e['src'] for e in ents}),
+          '3D TextRender (kept English)', sum(1 for e in ents if e.get('textrender')))

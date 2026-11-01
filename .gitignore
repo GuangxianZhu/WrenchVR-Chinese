@@ -5,3 +5,4 @@ data/source_entries*.json
 data/untranslated.json
 game_path.txt
 data/untranslated_exe.json
+data/exe_loctext.json

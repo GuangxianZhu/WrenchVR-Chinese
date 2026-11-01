@@ -86,3 +86,33 @@ def append_names(uasset, new_names):
         struct.pack_into('<q', out, eo + d + 36, off + d)
     idx = {n: s.NameCount + i for i, n in enumerate(new_names)}
     return bytes(out), idx
+
+
+def import_class_names(b, s):
+    """Return list of (ClassName, ObjectName) for the import map (UE4.26: 28 bytes/entry)."""
+    names = [n for n, _ in s.names]
+    out = []
+    for i in range(s.ImportCount):
+        o = s.ImportOffset + i * 28
+        cls, _, outer, obj, _ = struct.unpack_from('<iiiii', b, o + 8)
+        out.append((names[cls], names[obj]))
+    return out
+
+
+def export_spans(b, s):
+    """[(start_in_uexp, end_in_uexp, class_name)] for every export."""
+    names = [n for n, _ in s.names]
+    imps = import_class_names(b, s)
+    spans = []
+    for i, (eo, size, off) in enumerate(s.exports):
+        ci, = struct.unpack_from('<i', b, eo)
+        if ci < 0:
+            cls = imps[-ci - 1][1]
+        elif ci > 0:
+            ext_name_idx, = struct.unpack_from('<i', b, s.ExportOffset + (ci - 1) * 104 + 16)
+            cls = names[ext_name_idx]
+        else:
+            cls = 'Class'
+        start = off - s.TotalHeaderSize
+        spans.append((start, start + size, cls))
+    return spans

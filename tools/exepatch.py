@@ -38,26 +38,46 @@ def rdata_range(b):
     raise RuntimeError('.rdata not found')
 
 
-def patch_bytes(orig, table):
+def boundary_ok(b, p):
+    """True if a UTF-16 literal can start at offset p: p is 2-aligned and the bytes before are
+    either a UTF-16 terminator/padding (00 00) or the end of an 8-bit string (xx xx 00)."""
+    if p % 2 or p < 3:
+        return False
+    if b[p - 2] == 0 and b[p - 1] == 0:
+        return True
+    return b[p - 1] == 0 and b[p - 2] != 0 and b[p - 3] != 0
+
+
+def patch_bytes(orig, table, skip=frozenset()):
     b = bytearray(orig)
     lo, hi = rdata_range(orig)
     n_str = n_occ = 0
     for en, zh in table.items():
-        if not zh or zh == en or _units(zh) > _units(en):
+        if not zh or zh == en or _units(zh) > _units(en) or en in skip:
             continue
-        pat = b'\0\0' + en.encode('utf-16-le') + b'\0\0'
-        rep = b'\0\0' + zh.encode('utf-16-le') + b'\0\0' * (_units(en) - _units(zh)) + b'\0\0'
+        pat = en.encode('utf-16-le') + b'\0\0'
+        rep = zh.encode('utf-16-le') + b'\0\0' * (_units(en) - _units(zh)) + b'\0\0'
         assert len(rep) == len(pat)
         i = orig.find(pat, lo, hi); hit = False
         while i >= 0:
-            if (i + 2) % 2 == 0:
+            if boundary_ok(orig, i):
                 b[i:i + len(pat)] = rep; n_occ += 1; hit = True
-            i = orig.find(pat, i + 2, hi)
+            i = orig.find(pat, i + 1, hi)
         n_str += hit
     return bytes(b), n_str, n_occ
 
 
-def install_exe(game, table, log=print):
+def clean_exe_bytes(game):
+    """Bytes of the original exe (the backup, if the current exe is our patched copy)."""
+    exe = os.path.join(game, EXE_REL); bak = exe + BACKUP; st = exe + STATE
+    cur = open(exe, 'rb').read()
+    if os.path.exists(st) and os.path.exists(bak):
+        if _sha1(cur) == json.load(open(st, encoding='utf-8')).get('patched'):
+            return open(bak, 'rb').read()
+    return cur
+
+
+def install_exe(game, table, skip=frozenset(), log=print):
     exe = os.path.join(game, EXE_REL); bak = exe + BACKUP; st = exe + STATE
     cur = open(exe, 'rb').read(); h = _sha1(cur)
     state = json.load(open(st, encoding='utf-8')) if os.path.exists(st) else None
@@ -70,7 +90,7 @@ def install_exe(game, table, log=print):
     else:
         orig = cur                      # first install, or the game updated / was verified
         shutil.copyfile(exe, bak)
-    new, n_str, n_occ = patch_bytes(orig, table)
+    new, n_str, n_occ = patch_bytes(orig, table, skip)
     assert len(new) == len(orig)
     try:
         with open(exe, 'wb') as f:
